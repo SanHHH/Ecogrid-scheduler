@@ -1,4 +1,6 @@
 name: Taipower Crawler
+permissions:
+  contents: write
 
 on:
   schedule:
