@@ -13,6 +13,15 @@ carbon_factors = {
     '水力(Hydro)': 0,
 }
 
+file_path = "taipower_emission_data.csv"
+
+def init_csv(path):
+    """如果檔案不存在，建立新的 CSV 並加上標頭"""
+    if not os.path.exists(path):
+        columns = ["時間", "總發電量(MW)", "碳排放量(TCO₂)", "每度電碳排(kgCO₂/kWh)"]
+        pd.DataFrame(columns=columns).to_csv(path, index=False, encoding="utf-8-sig")
+        print(f"📄 已建立新的 CSV 檔案: {path}")
+
 def crawl_taipower():
     url = "https://www.taipower.com.tw/d006/loadGraph/loadGraph/data/genary.json"
     response = requests.get(url)
@@ -47,10 +56,11 @@ def crawl_taipower():
         "每度電碳排(kgCO₂/kWh)": emission_per_kwh
     }])
 
-    file_path = "taipower_emission_data.csv"
-    if os.path.exists(file_path):
-        old_df = pd.read_csv(file_path)
-        df_summary = pd.concat([old_df, df_summary]).drop_duplicates(subset=["時間"], keep="last")
+    # 確保檔案存在，否則建立新檔案
+    init_csv(file_path)
+
+    old_df = pd.read_csv(file_path)
+    df_summary = pd.concat([old_df, df_summary]).drop_duplicates(subset=["時間"], keep="last")
 
     df_summary.to_csv(file_path, index=False, encoding="utf-8-sig")
     print(f"✅ 已更新: {file_path}")
