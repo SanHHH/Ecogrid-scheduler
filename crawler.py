@@ -1,35 +1,30 @@
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 
-# 基本路徑設定
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(BASE_DIR, "taipower_emission_data.csv")
+# 定義台灣時區
+tz = timezone(timedelta(hours=8))
 
-# 所有可能能源類型
-energy_types = [
-    "燃煤(Coal)", "燃氣(LNG)", "燃油(Oil)", "核能(Nuclear)", "太陽能(Solar)",
-    "風力(Wind)", "水力(Hydro)", "汽電共生(Co-Gen)", "民營電廠-燃氣(IPP-LNG)",
-    "民營電廠-燃煤(IPP-Coal)", "輕油(Diesel)", "儲能(Energy Storage System)",
-    "其它再生能源(Other Renewable Energy)"
-]
-
+# 碳排放係數 (kgCO₂/kWh, 這裡先用相對數值，實務可依官方資料更新)
 carbon_factors = {
-    '燃煤(Coal)': 0.9,
-    '燃氣(LNG)': 0.5,
-    '燃油(Oil)': 0.8,
-    '核能(Nuclear)': 0,
-    '太陽能(Solar)': 0,
-    '風力(Wind)': 0,
-    '水力(Hydro)': 0,
-    '汽電共生(Co-Gen)': 0.6,
-    '民營電廠-燃氣(IPP-LNG)': 0.5,
-    '民營電廠-燃煤(IPP-Coal)': 0.9,
-    '輕油(Diesel)': 0.8,
     '儲能(Energy Storage System)': 0,
     '其它再生能源(Other Renewable Energy)': 0,
+    '太陽能(Solar)': 0,
+    '核能(Nuclear)': 0,
+    '民營電廠-燃氣(IPP-LNG)': 0.5,
+    '民營電廠-燃煤(IPP-Coal)': 0.9,
+    '水力(Hydro)': 0,
+    '汽電共生(Co-Gen)': 0.6,
+    '燃氣(LNG)': 0.5,
+    '燃油(Oil)': 0.8,
+    '燃煤(Coal)': 0.9,
+    '輕油(Diesel)': 0.85,
+    '風力(Wind)': 0
 }
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(BASE_DIR, "taipower_emission_data.csv")
 
 def crawl_taipower():
     url = "https://www.taipower.com.tw/d006/loadGraph/loadGraph/data/genary.json"
@@ -37,53 +32,78 @@ def crawl_taipower():
     response.raise_for_status()
 
     data = response.json().get("aaData", [])
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    records, carbon_total = [], 0
+    # 使用台灣時間
+    now = datetime.now(tz).strftime("%Y-%m-%d %H:%M")
+
+    records = []
+    carbon_total = 0
+
     for row in data:
         if not row or "b>" not in row[0]:
             continue
+
         energy_type = row[0].split(">")[-2].replace("</b", "").strip()
+
         try:
+            capacity = float(row[3])
             actual = float(row[4])
-        except:
+        except (ValueError, IndexError):
             continue
 
+        percent = round((actual / capacity * 100), 2) if capacity > 0 else 0
+
+        # 計算碳排
         carbon = carbon_factors.get(energy_type, 0) * actual
         carbon_total += carbon
-        records.append({"能源類型": energy_type, "發電量": actual})
+
+        records.append({
+            "時間": now,
+            "能源類型": energy_type,
+            "發電量(MW)": actual,
+            "百分比(%)": percent
+        })
 
     df = pd.DataFrame(records)
-    total_gen = df["發電量"].sum() if not df.empty else 0
 
-    # 建立固定結構的 summary
-    summary = {
-        "時間": now,
-        "總發電量(MW)": total_gen,
-        "碳排放量(TCO₂)": round(carbon_total, 2),
-        "每度電碳排(kgCO₂/kWh)": round(carbon_total / total_gen, 6) if total_gen > 0 else 0,
-    }
+    # 確保所有能源種類都有欄位，沒有的補 0
+    pivot_df = df.pivot(index="時間", columns="能源類型", values="發電量(MW)").fillna(0)
 
-    # 為每一種能源建立 MW 和 %
-    for et in energy_types:
-        if not df.empty and et in df["能源類型"].values:
-            val = df.loc[df["能源類型"] == et, "發電量"].values[0]
-            pct = (val / total_gen * 100) if total_gen > 0 else 0
+    # 同樣建立百分比欄位
+    for energy in carbon_factors.keys():
+        if energy not in pivot_df.columns:
+            pivot_df[energy] = 0
+
+    percent_df = df.pivot(index="時間", columns="能源類型", values="百分比(%)").fillna(0)
+    for energy in carbon_factors.keys():
+        colname = f"{energy}(%)"
+        if energy in percent_df.columns:
+            pivot_df[colname] = percent_df[energy]
         else:
-            val, pct = 0, 0
-        summary[f"{et}(MW)"] = round(val, 2)
-        summary[f"{et}(%)"] = f"{round(pct, 2)}%"  # 加上百分號
+            pivot_df[colname] = 0
 
-    df_summary = pd.DataFrame([summary])
+    # 計算總發電量與碳排
+    total_generation = df["發電量(MW)"].sum()
+    pivot_df["總發電量(MW)"] = total_generation
+    pivot_df["碳排放量(TCO₂)"] = round(carbon_total, 2)
 
-    # 合併舊資料
+    if total_generation > 0:
+        emission_per_kwh = round(carbon_total / (total_generation * 1000), 6)
+    else:
+        emission_per_kwh = 0
+
+    pivot_df["每度電碳排(kgCO₂/kWh)"] = emission_per_kwh
+
+    # 初始化檔案（如果不存在）
     if os.path.exists(file_path):
-        old_df = pd.read_csv(file_path)
-        df_summary = pd.concat([old_df, df_summary]).drop_duplicates(subset=["時間"], keep="last")
+        old_df = pd.read_csv(file_path, index_col=0)
+        combined_df = pd.concat([old_df, pivot_df])
+        combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+    else:
+        combined_df = pivot_df
 
-    # 儲存
-    df_summary.to_csv(file_path, index=False, encoding="utf-8-sig")
-    print(f"✅ 已更新: {file_path}")
+    combined_df.to_csv(file_path, encoding="utf-8-sig")
+    print(f"✅ 資料已更新並儲存到 {file_path}")
 
 if __name__ == "__main__":
     crawl_taipower()
