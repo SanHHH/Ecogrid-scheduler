@@ -1,21 +1,20 @@
-name: Taipower Crawler
-permissions:
-  contents: write
+name: Run Taipower Crawler
 
 on:
   schedule:
-    - cron: "0 * * * *"   # 每小時執行一次 (UTC 時區)
+    - cron: "0 * * * *"   # 每小時整點跑一次 (UTC 時間)
   workflow_dispatch:       # 手動觸發
 
 jobs:
   run-crawler:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -23,12 +22,12 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run crawler
-        run: python crawler.py
+        run: python crawl_taipower.py
 
       - name: Commit and push results
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add taipower_emission_data.csv
-          git commit -m "Update data [skip ci]" || echo "No changes to commit"
+          git commit -m "Auto update data $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push
