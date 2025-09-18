@@ -3,6 +3,11 @@ import pandas as pd
 from datetime import datetime
 import os
 
+# 設定專案目錄
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+file_path = os.path.join(BASE_DIR, "taipower_emission_data.csv")
+
+# 碳排係數
 carbon_factors = {
     '儲能(Energy Storage System)': 0,
     '其它再生能源(Other Renewable Energy)': 0,
@@ -19,7 +24,7 @@ carbon_factors = {
     '風力(Wind)': 0
 }
 
-# 預設能源欄位（固定順序）
+# 固定能源欄位順序
 energy_columns = list(carbon_factors.keys())
 
 def crawl_taipower():
@@ -67,7 +72,7 @@ def crawl_taipower():
     # Pivot：時間 x 能源類型
     pivot_df = grouped.pivot(index="時間", columns="能源類型", values="發電量")
 
-    # 🔑 確保所有能源欄位都存在（沒有的填 0）
+    # 確保所有能源欄位都存在（缺少的填 0）
     pivot_df = pivot_df.reindex(columns=energy_columns, fill_value=0)
 
     # ➕ 新增統計資訊
@@ -88,19 +93,27 @@ def crawl_taipower():
     pivot_df["碳排放量(TCO2)"] = round(carbon_total, 2)
     pivot_df["每度電碳排(kgCO₂/kWh)"] = emission_per_kwh
 
-    # 檔案路徑
-    filepath = r"C:\project\taipower_emission_data.csv"
+    # 🔑 初始化檔案（第一次建立）
+    if not os.path.exists(file_path):
+        print("📂 檔案不存在，建立新檔案")
+        pivot_df.to_csv(file_path, encoding="utf-8-sig")
+        return
 
-    # 合併歷史資料（保留唯一時間）
-    if os.path.exists(filepath):
-        old_df = pd.read_csv(filepath, index_col=0)
-        combined_df = pd.concat([old_df, pivot_df])
-        combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
-    else:
-        combined_df = pivot_df
+    # 合併歷史資料（保留唯一時間，欄位對齊）
+    old_df = pd.read_csv(file_path, index_col=0)
+    # 確保舊資料也有完整欄位
+    for col in pivot_df.columns:
+        if col not in old_df.columns:
+            old_df[col] = 0
+    for col in old_df.columns:
+        if col not in pivot_df.columns:
+            pivot_df[col] = 0
 
-    combined_df.to_csv(filepath, encoding='utf-8-sig')
-    print(f"✅ 資料已更新並儲存到 {filepath}")
+    combined_df = pd.concat([old_df, pivot_df])
+    combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+
+    combined_df.to_csv(file_path, encoding="utf-8-sig")
+    print(f"✅ 資料已更新並儲存到 {file_path}")
 
 if __name__ == "__main__":
     crawl_taipower()
