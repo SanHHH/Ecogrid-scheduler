@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "0 * * * *"   # 每小時整點跑一次 (UTC 時間)
   workflow_dispatch:       # 手動觸發
+  
+permissions:
+  contents: write  # ✅ 允許 Actions 寫入 repo
 
 jobs:
   run-crawler:
