@@ -5,6 +5,9 @@ on:
     - cron: "5 * * * *"   # 每小時的第 5 分鐘觸發
   workflow_dispatch:       # 手動觸發（方便測試）
 
+permissions:
+  contents: write   # ✅ 允許 Actions 對 repo 進行寫入
+
 jobs:
   run-crawler:
     runs-on: ubuntu-latest
@@ -27,7 +30,8 @@ jobs:
       - name: Commit and push results
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
           git add taipower_emission_data.csv
           git commit -m "Auto update data $(date '+%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
           git push
