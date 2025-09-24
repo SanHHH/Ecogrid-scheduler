@@ -2,7 +2,7 @@ name: Run Taipower Crawler
 
 on:
   schedule:
-    - cron: "5 * * * *"   # 每小時的第 5 分鐘觸發
+    - cron: "0 * * * *"   # 每小時的第 5 分鐘觸發
   workflow_dispatch:       # 手動觸發（方便測試）
 
 permissions:
