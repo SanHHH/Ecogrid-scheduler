@@ -64,7 +64,7 @@ def crawl_taipower():
         records.append({
             "時間": now,
             "能源類型": energy_type,
-            "發電量(MW)": actual,
+            "發電量(MW)": round(actual, 2),     # 小數點 2 位
             "百分比(%)": percent
         })
 
@@ -76,11 +76,11 @@ def crawl_taipower():
     grouped["百分比(%)"] = (grouped["發電量(MW)"] / total_by_time * 100).round(2)
 
     # Pivot → 每種能源獨立欄位
-    pivot_df = grouped.pivot_table(index="時間", columns="能源類型", values="發電量(MW)", aggfunc="sum").fillna(0)
+    pivot_df = grouped.pivot_table(index="時間", columns="能源類型", values="發電量(MW)", aggfunc="sum").fillna(0).round(2)
     pivot_df = pivot_df.astype(float)
 
     # 增加百分比欄位
-    percent_df = grouped.pivot_table(index="時間", columns="能源類型", values="百分比(%)", aggfunc="sum").fillna(0)
+    percent_df = grouped.pivot_table(index="時間", columns="能源類型", values="百分比(%)", aggfunc="sum").fillna(0).round(2)
     percent_df.columns = [f"{col}(%)" for col in percent_df.columns]
 
     # 合併發電量與百分比
@@ -91,7 +91,7 @@ def crawl_taipower():
 
     # 每度電碳排
     total_generation_kwh = grouped["發電量(MW)"].sum() * 1000  # MW → kWh
-    emission_per_kwh = round(carbon_total * 1000 / total_generation_kwh, 6) if total_generation_kwh > 0 else 0
+    emission_per_kwh = round(carbon_total * 1000 / total_generation_kwh, 2) if total_generation_kwh > 0 else 0
     pivot_df["每度電碳排(kgCO₂/kWh)"] = emission_per_kwh
 
     # 如果舊檔存在，合併
@@ -102,7 +102,8 @@ def crawl_taipower():
     else:
         combined_df = pivot_df
 
-    # 存檔
+    # 存檔（全部保留到小數點後 2 位）
+    combined_df = combined_df.round(2)
     combined_df.to_csv(file_path, encoding="utf-8-sig")
     print(f"✅ 已更新並儲存到 {file_path}")
 
